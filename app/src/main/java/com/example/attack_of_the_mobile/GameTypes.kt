@@ -6,7 +6,11 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
@@ -103,6 +107,63 @@ class TapMinigame : Minigame(durationSeconds = 5) {
                 modifier = Modifier.size(150.dp)
             ) {
                 Text("TAP!", fontSize = 24.sp)
+            }
+        }
+    }
+}
+
+class CatchMinigame : Minigame(durationSeconds = 5) {
+    override val title: String = "Catch the Button!"
+
+    @Composable
+    override fun Content(onComplete: (Boolean) -> Unit) {
+        var timeLeft by remember { mutableIntStateOf(durationSeconds) }
+        var containerSize by remember { mutableStateOf(IntSize.Zero) }
+        var buttonOffset by remember { mutableStateOf(IntOffset.Zero) }
+        val density = LocalDensity.current
+        val buttonSizeDp = 100.dp
+        val buttonSizePx = with(density) { buttonSizeDp.roundToPx() }
+
+        LaunchedEffect(Unit) {
+            while (timeLeft > 0) {
+                delay(1000)
+                timeLeft--
+            }
+            onComplete(false)
+        }
+
+        LaunchedEffect(containerSize) {
+            if (containerSize != IntSize.Zero) {
+                while (true) {
+                    val maxX = (containerSize.width - buttonSizePx).coerceAtLeast(0)
+                    val maxY = (containerSize.height - buttonSizePx).coerceAtLeast(0)
+                    buttonOffset = IntOffset(
+                        Random.nextInt(0, maxX + 1),
+                        Random.nextInt(0, maxY + 1)
+                    )
+                    delay(800)
+                }
+            }
+        }
+
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .onGloballyPositioned { containerSize = it.size }
+        ) {
+            Text(
+                text = "Time: $timeLeft",
+                modifier = Modifier.align(Alignment.TopCenter).padding(top = 16.dp),
+                fontSize = 20.sp
+            )
+            
+            Button(
+                onClick = { onComplete(true) },
+                modifier = Modifier
+                    .offset { buttonOffset }
+                    .size(buttonSizeDp)
+            ) {
+                Text("CATCH!")
             }
         }
     }

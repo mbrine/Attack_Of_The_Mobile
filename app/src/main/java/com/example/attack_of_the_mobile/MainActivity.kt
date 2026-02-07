@@ -32,7 +32,8 @@ class MainActivity : ComponentActivity() {
 fun GameManager(modifier: Modifier = Modifier) {
     val minigames = listOf(
         { MathMinigame() },
-        { TapMinigame() }
+        { TapMinigame() },
+        { CatchMinigame() }
     )
 
     var currentMinigame by remember { mutableStateOf<Minigame?>(null) }
@@ -54,7 +55,6 @@ fun GameManager(modifier: Modifier = Modifier) {
                 }
             }
             "PLAYING" -> {
-                // key(currentMinigame) ensures the composable resets when the minigame object changes
                 key(currentMinigame) {
                     currentMinigame?.Content(onComplete = { success ->
                         if (success) {
