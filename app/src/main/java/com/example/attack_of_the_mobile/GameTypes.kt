@@ -1,19 +1,24 @@
 package com.example.attack_of_the_mobile
 
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.IntOffset
-import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
+import kotlin.math.*
 import kotlin.random.Random
 
 abstract class Minigame(val durationSeconds: Int) {
@@ -50,7 +55,7 @@ class MathMinigame : Minigame(durationSeconds = 7) {
         ) {
             Text(text = title, fontSize = 24.sp)
             Spacer(modifier = Modifier.height(8.dp))
-            Text(text = "Time Left: $timeLeft", fontSize = 20.sp, color = if (timeLeft < 3) androidx.compose.ui.graphics.Color.Red else androidx.compose.ui.graphics.Color.Unspecified)
+            Text(text = "Time Left: $timeLeft", fontSize = 20.sp, color = if (timeLeft < 3) Color.Red else Color.Unspecified)
             Spacer(modifier = Modifier.height(32.dp))
             Text(text = "$num1 + $num2 = ?", fontSize = 48.sp)
             Spacer(modifier = Modifier.height(16.dp))
@@ -66,6 +71,65 @@ class MathMinigame : Minigame(durationSeconds = 7) {
                 label = { Text("Type the answer") },
                 singleLine = true
             )
+        }
+    }
+}
+
+class MathMCQMinigame : Minigame(durationSeconds = 6) {
+    override val title: String = "Math MCQ"
+
+    @Composable
+    override fun Content(onComplete: (Boolean) -> Unit) {
+        val num1 by remember { mutableIntStateOf(Random.nextInt(0, 11)) }
+        val num2 by remember { mutableIntStateOf(Random.nextInt(0, 11)) }
+        val correctAnswer = num1 + num2
+        
+        val options by remember {
+            mutableStateOf(
+                buildSet {
+                    add(correctAnswer)
+                    while (size < 3) {
+                        val offset = Random.nextInt(-5, 6)
+                        if (offset != 0) {
+                            val decoy = correctAnswer + offset
+                            if (decoy >= 0) add(decoy)
+                        }
+                    }
+                }.toList().shuffled()
+            )
+        }
+
+        var timeLeft by remember { mutableIntStateOf(durationSeconds) }
+
+        LaunchedEffect(Unit) {
+            while (timeLeft > 0) {
+                delay(1000)
+                timeLeft--
+            }
+            onComplete(false)
+        }
+
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Text(text = title, fontSize = 24.sp)
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(text = "Time Left: $timeLeft", fontSize = 20.sp, color = if (timeLeft < 3) Color.Red else Color.Unspecified)
+            Spacer(modifier = Modifier.height(32.dp))
+            Text(text = "$num1 + $num2 = ?", fontSize = 48.sp)
+            Spacer(modifier = Modifier.height(32.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly
+            ) {
+                options.forEach { option ->
+                    Button(onClick = { onComplete(option == correctAnswer) }) {
+                        Text(text = option.toString(), fontSize = 24.sp)
+                    }
+                }
+            }
         }
     }
 }
@@ -112,17 +176,13 @@ class TapMinigame : Minigame(durationSeconds = 5) {
     }
 }
 
-class CatchMinigame : Minigame(durationSeconds = 5) {
+class MovingTargetMinigame : Minigame(durationSeconds = 8) {
     override val title: String = "Catch the Button!"
 
     @Composable
     override fun Content(onComplete: (Boolean) -> Unit) {
         var timeLeft by remember { mutableIntStateOf(durationSeconds) }
-        var containerSize by remember { mutableStateOf(IntSize.Zero) }
-        var buttonOffset by remember { mutableStateOf(IntOffset.Zero) }
-        val density = LocalDensity.current
-        val buttonSizeDp = 100.dp
-        val buttonSizePx = with(density) { buttonSizeDp.roundToPx() }
+        val buttonSize = 100.dp
 
         LaunchedEffect(Unit) {
             while (timeLeft > 0) {
@@ -132,38 +192,164 @@ class CatchMinigame : Minigame(durationSeconds = 5) {
             onComplete(false)
         }
 
-        LaunchedEffect(containerSize) {
-            if (containerSize != IntSize.Zero) {
+        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+            val boxWithConstraintsScope = this
+            val density = LocalDensity.current
+            // Use maxWidth/maxHeight from BoxWithConstraintsScope
+            val maxWidthPx = with(density) { maxWidth.toPx() }
+            val maxHeightPx = with(density) { maxHeight.toPx() }
+            val buttonSizePx = with(density) { buttonSize.toPx() }
+
+            var posX by remember { mutableFloatStateOf(Random.nextFloat() * (maxWidthPx - buttonSizePx).coerceAtLeast(0f)) }
+            var posY by remember { mutableFloatStateOf(Random.nextFloat() * (maxHeightPx - buttonSizePx).coerceAtLeast(0f)) }
+            var velX by remember {
+                mutableFloatStateOf(with(density) { (Random.nextFloat() * 4 + 2).dp.toPx() } * if (Random.nextBoolean()) 1 else -1)
+            }
+            var velY by remember {
+                mutableFloatStateOf(with(density) { (Random.nextFloat() * 4 + 2).dp.toPx() } * if (Random.nextBoolean()) 1 else -1)
+            }
+
+            LaunchedEffect(maxWidthPx, maxHeightPx) {
                 while (true) {
-                    val maxX = (containerSize.width - buttonSizePx).coerceAtLeast(0)
-                    val maxY = (containerSize.height - buttonSizePx).coerceAtLeast(0)
-                    buttonOffset = IntOffset(
-                        Random.nextInt(0, maxX + 1),
-                        Random.nextInt(0, maxY + 1)
-                    )
-                    delay(800)
+                    posX += velX
+                    posY += velY
+
+                    if (posX <= 0f) {
+                        posX = 0f
+                        velX *= -1
+                    } else if (posX >= maxWidthPx - buttonSizePx) {
+                        posX = (maxWidthPx - buttonSizePx).coerceAtLeast(0f)
+                        velX *= -1
+                    }
+
+                    if (posY <= 0f) {
+                        posY = 0f
+                        velY *= -1
+                    } else if (posY >= maxHeightPx - buttonSizePx) {
+                        posY = (maxHeightPx - buttonSizePx).coerceAtLeast(0f)
+                        velY *= -1
+                    }
+                    delay(16)
                 }
             }
-        }
 
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .onGloballyPositioned { containerSize = it.size }
-        ) {
-            Text(
-                text = "Time: $timeLeft",
-                modifier = Modifier.align(Alignment.TopCenter).padding(top = 16.dp),
-                fontSize = 20.sp
-            )
-            
+            Column(
+                modifier = Modifier.fillMaxSize(),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(text = title, fontSize = 24.sp)
+                Text(
+                    text = "Time Left: $timeLeft",
+                    fontSize = 20.sp,
+                    color = if (timeLeft < 3) Color.Red else Color.Unspecified
+                )
+            }
+
             Button(
                 onClick = { onComplete(true) },
                 modifier = Modifier
-                    .offset { buttonOffset }
-                    .size(buttonSizeDp)
+                    .offset { IntOffset(posX.toInt(), posY.toInt()) }
+                    .size(buttonSize)
             ) {
-                Text("CATCH!")
+                Text("TAP!")
+            }
+        }
+    }
+}
+
+class KnobMinigame : Minigame(durationSeconds = 8) {
+    override val title: String = "Set the Dial"
+
+    @Composable
+    override fun Content(onComplete: (Boolean) -> Unit) {
+        val targetAngle by remember { mutableFloatStateOf(Random.nextInt(0, 360).toFloat()) }
+        val currentAngle = remember { mutableFloatStateOf(0f) }
+        var timeLeft by remember { mutableIntStateOf(durationSeconds) }
+
+        LaunchedEffect(Unit) {
+            while (timeLeft > 0) {
+                delay(1000)
+                timeLeft--
+            }
+            val diff = abs(currentAngle.floatValue - targetAngle) % 360
+            val normalizedDiff = if (diff > 180) 360 - diff else diff
+            onComplete(normalizedDiff <= 15)
+        }
+
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Text(text = title, fontSize = 24.sp)
+            Text(
+                text = "Time Left: $timeLeft",
+                fontSize = 20.sp,
+                color = if (timeLeft < 3) Color.Red else Color.Unspecified
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            Text(text = "Target: ${targetAngle.toInt()}°", fontSize = 32.sp)
+            Text(text = "Current: ${currentAngle.floatValue.toInt()}°", fontSize = 24.sp)
+            Spacer(modifier = Modifier.height(32.dp))
+
+            Box(
+                modifier = Modifier
+                    .size(240.dp)
+                    .pointerInput(Unit) {
+                        detectDragGestures { change, _ ->
+                            change.consume()
+                            val center = Offset(size.width / 2f, size.height / 2f)
+                            val position = change.position
+                            val angle = atan2(position.y - center.y, position.x - center.x) * (180 / PI).toFloat()
+                            currentAngle.floatValue = (angle + 360) % 360
+                        }
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    val radius = size.minDimension / 2
+                    
+                    // Outer ring
+                    drawCircle(
+                        color = Color.LightGray,
+                        radius = radius,
+                        style = androidx.compose.ui.graphics.drawscope.Stroke(width = 4.dp.toPx())
+                    )
+
+                    // Target range
+                    drawArc(
+                        color = Color.Green.copy(alpha = 0.2f),
+                        startAngle = targetAngle - 15f,
+                        sweepAngle = 30f,
+                        useCenter = true
+                    )
+
+                    // Target line
+                    rotate(targetAngle) {
+                        drawLine(
+                            color = Color.Red,
+                            start = center,
+                            end = Offset(center.x + radius, center.y),
+                            strokeWidth = 3.dp.toPx()
+                        )
+                    }
+
+                    // Knob body
+                    rotate(currentAngle.floatValue) {
+                        drawCircle(
+                            color = Color.DarkGray,
+                            radius = radius * 0.8f
+                        )
+                        // Indicator on knob
+                        drawLine(
+                            color = Color.White,
+                            start = center,
+                            end = Offset(center.x + radius * 0.8f, center.y),
+                            strokeWidth = 6.dp.toPx()
+                        )
+                    }
+                }
             }
         }
     }
