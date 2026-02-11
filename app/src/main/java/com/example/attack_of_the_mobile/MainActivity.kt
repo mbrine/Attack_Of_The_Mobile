@@ -32,7 +32,10 @@ class MainActivity : ComponentActivity() {
 fun GameManager(modifier: Modifier = Modifier) {
     val minigames = listOf(
         { MathMinigame() },
-        { TapMinigame() }
+        { MathMCQMinigame() },
+        { TapMinigame() },
+        { MovingTargetMinigame() },
+        { KnobMinigame() },
     )
 
     var currentMinigame by remember { mutableStateOf<Minigame?>(null) }
