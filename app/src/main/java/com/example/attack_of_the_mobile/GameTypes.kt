@@ -1,6 +1,12 @@
 package com.example.attack_of_the_mobile
 
+import android.content.Context
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardOptions
@@ -12,6 +18,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.IntOffset
@@ -351,6 +358,165 @@ class KnobMinigame : Minigame(durationSeconds = 8) {
                     }
                 }
             }
+        }
+    }
+}
+
+class ShakeMinigame : Minigame(durationSeconds = 10) {
+    override val title: String = "Shake It!"
+
+    @Composable
+    override fun Content(onComplete: (Boolean) -> Unit) {
+        val context = LocalContext.current
+        var shakeCount by remember { mutableIntStateOf(0) }
+        val targetShakes = 300
+        var timeLeft by remember { mutableIntStateOf(durationSeconds) }
+        var shakePower by remember { mutableFloatStateOf(0f) }
+
+        // Shake detection threshold
+        val shakeThreshold = 15.0
+        var lastShakeTime by remember { mutableLongStateOf(0L) }
+
+        // Timer for game over
+        LaunchedEffect(Unit) {
+            while (timeLeft > 0) {
+                delay(1000)
+                timeLeft--
+            }
+            onComplete(false)
+        }
+
+        // Sensor setup
+        DisposableEffect(context) {
+            val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
+            val accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+
+            val sensorListener = object : SensorEventListener {
+                override fun onSensorChanged(event: SensorEvent) {
+                    if (event.sensor.type == Sensor.TYPE_ACCELEROMETER) {
+                        val x = event.values[0]
+                        val y = event.values[1]
+                        val z = event.values[2]
+
+                        // Calculate acceleration magnitude
+                        val acceleration = sqrt((x * x + y * y + z * z).toDouble())
+
+                        // Update shake power for visual feedback
+                        shakePower = (acceleration - 9.8).toFloat().coerceIn(0f, 20f) / 20f
+
+                        val currentTime = System.currentTimeMillis()
+
+                        // Detect shake
+                        if (acceleration > shakeThreshold &&
+                            currentTime - lastShakeTime > 200) {
+                            shakeCount++
+
+                            // Check for win condition
+                            if (shakeCount >= targetShakes) {
+                                onComplete(true)
+                            }
+                        }
+                    }
+                }
+
+                override fun onAccuracyChanged(sensor: Sensor, accuracy: Int) {}
+            }
+
+            sensorManager.registerListener(
+                sensorListener,
+                accelerometer,
+                SensorManager.SENSOR_DELAY_GAME
+            )
+
+            onDispose {
+                sensorManager.unregisterListener(sensorListener)
+            }
+        }
+
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Text(
+                text = "Time Left: $timeLeft",
+                fontSize = 20.sp,
+                color = if (timeLeft < 3) Color.Red else Color.Unspecified
+            )
+            Spacer(modifier = Modifier.height(64.dp))
+            Text(
+                text = title,
+                fontSize = 40.sp,
+                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary
+            )
+            Spacer(modifier = Modifier.height(32.dp))
+
+            // Shake power meter
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                // Power bar
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(0.7f)
+                        .height(24.dp)
+                        .background(
+                            color = Color.LightGray,
+                            shape = MaterialTheme.shapes.small
+                        )
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(shakePower)
+                            .fillMaxHeight()
+                            .background(
+                                color = when {
+                                    shakePower > 0.7f -> Color.Green
+                                    shakePower > 0.3f -> Color.Yellow
+                                    else -> Color.Red
+                                },
+                                shape = MaterialTheme.shapes.small
+                            )
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(32.dp))
+
+            // Progress bar for shake count
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = "Progress: $shakeCount / $targetShakes",
+                    fontSize = 18.sp,
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.Medium
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(0.7f)
+                        .height(24.dp)
+                        .background(
+                            color = Color.DarkGray,
+                            shape = MaterialTheme.shapes.small
+                        )
+                ) {
+                    val progress = (shakeCount.toFloat() / targetShakes).coerceIn(0f, 1f)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(progress)
+                            .fillMaxHeight()
+                            .background(
+                                color = Color.White,
+                                shape = MaterialTheme.shapes.small
+                            )
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(128.dp))
         }
     }
 }

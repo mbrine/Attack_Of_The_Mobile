@@ -36,6 +36,7 @@ fun GameManager(modifier: Modifier = Modifier) {
         { TapMinigame() },
         { MovingTargetMinigame() },
         { KnobMinigame() },
+        { ShakeMinigame() },
     )
 
     var currentMinigame by remember { mutableStateOf<Minigame?>(null) }
