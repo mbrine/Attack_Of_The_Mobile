@@ -1,6 +1,7 @@
 package com.example.attack_of_the_mobile
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -8,6 +9,9 @@ import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
+import android.media.AudioFormat
+import android.media.AudioRecord
+import android.media.MediaRecorder
 import android.os.Bundle
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
@@ -470,6 +474,230 @@ class ShakeMinigame(difficulty: Double) : Minigame(difficulty) {
                 }
 
                 Spacer(modifier = Modifier.height(128.dp))
+            }
+        }
+    }
+}
+
+class NoiseMinigame(difficulty: Double) : Minigame(difficulty) {
+    override val title: String = "Make Some Noise!"
+
+    @SuppressLint("MissingPermission")
+    @Composable
+    override fun Content(onComplete: (Boolean) -> Unit) {
+        val context = LocalContext.current
+        var currentDb by remember { mutableFloatStateOf(0f) }
+        var thresholdsHit by remember { mutableIntStateOf(0) }
+        val totalThresholds = 1 + difficulty.toInt()
+        val rangeSize = 20
+        val ranges by remember {
+            mutableStateOf(List(totalThresholds) {
+                val low = Random.nextInt(30, 70 - rangeSize)
+                low.toFloat() to (low + rangeSize).toFloat()
+            })
+        }
+        // Hold duration per threshold: budget 4s total, minus cooldowns (0.3s each gap)
+        val cooldown = 300L
+        val holdRequired = ((4.0 - (totalThresholds - 1) * cooldown / 1000.0) / totalThresholds)
+            .coerceIn(0.3, 0.7).toFloat()
+        var holdProgress by remember { mutableFloatStateOf(0f) }
+        var hasPermission by remember {
+            mutableStateOf(
+                ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+            )
+        }
+
+        val launcher = rememberLauncherForActivityResult(
+            ActivityResultContracts.RequestPermission()
+        ) { granted -> hasPermission = granted }
+
+        DisposableEffect(hasPermission) {
+            var isRecording = true
+            var audioRecord: AudioRecord? = null
+
+            if (hasPermission) {
+                val sampleRate = 44100
+                val bufferSize = AudioRecord.getMinBufferSize(
+                    sampleRate, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT
+                )
+                audioRecord = AudioRecord(
+                    MediaRecorder.AudioSource.MIC, sampleRate,
+                    AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, bufferSize
+                )
+                audioRecord.startRecording()
+
+                Thread {
+                    val buffer = ShortArray(bufferSize)
+                    while (isRecording) {
+                        val read = audioRecord.read(buffer, 0, bufferSize)
+                        if (read > 0) {
+                            var sum = 0.0
+                            for (i in 0 until read) {
+                                sum += buffer[i].toDouble() * buffer[i].toDouble()
+                            }
+                            val rms = sqrt(sum / read)
+                            currentDb = (20 * log10(rms + 1)).toFloat()
+                        }
+                    }
+                }.start()
+            }
+
+            onDispose {
+                isRecording = false
+                audioRecord?.stop()
+                audioRecord?.release()
+            }
+        }
+
+        // Tick-based hold detection
+        LaunchedEffect(hasPermission) {
+            if (!hasPermission) return@LaunchedEffect
+            val tickRate = 50L
+            while (thresholdsHit < totalThresholds) {
+                delay(tickRate)
+                val (low, high) = ranges[thresholdsHit]
+                if (currentDb in low..high) {
+                    holdProgress += tickRate / 1000f
+                    if (holdProgress >= holdRequired) {
+                        thresholdsHit++
+                        holdProgress = 0f
+                        if (thresholdsHit >= totalThresholds) {
+                            onComplete(true)
+                        } else {
+                            delay(cooldown)
+                        }
+                    }
+                } else {
+                    // Keep current hold progress — don't reset
+                }
+            }
+        }
+
+        Box(modifier = Modifier.fillMaxSize()) {
+            Column(
+                modifier = Modifier.fillMaxSize(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Text(
+                    text = title,
+                    fontSize = 40.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Spacer(modifier = Modifier.height(32.dp))
+
+                if (!hasPermission) {
+                    Button(onClick = { launcher.launch(Manifest.permission.RECORD_AUDIO) }) {
+                        Text("Grant Microphone Permission")
+                    }
+                } else {
+                    val (targetLow, targetHigh) = if (thresholdsHit < totalThresholds) ranges[thresholdsHit] else (0f to 0f)
+                    Text(text = "Hit ${targetLow.toInt()} - ${targetHigh.toInt()} dB!", fontSize = 32.sp)
+                    Text(text = "Hold for ${"%.1f".format(holdRequired)}s", fontSize = 18.sp, color = Color.Gray)
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // dB meter
+                    val maxDb = 90f
+                    val dbNormalized = (currentDb / maxDb).coerceIn(0f, 1f)
+                    val targetLowNorm = (targetLow / maxDb).coerceIn(0f, 1f)
+                    val targetHighNorm = (targetHigh / maxDb).coerceIn(0f, 1f)
+                    val inRange = currentDb in targetLow..targetHigh
+
+                    Box(
+                        modifier = Modifier
+                            .width(60.dp)
+                            .height(200.dp)
+                            .background(Color.DarkGray, MaterialTheme.shapes.small)
+                    ) {
+                        // Target range zone
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .fillMaxHeight((targetHighNorm - targetLowNorm).coerceAtLeast(0f))
+                                .align(Alignment.BottomCenter)
+                                .offset(y = -(200.dp * targetLowNorm))
+                                .background(Color.Green.copy(alpha = 0.3f))
+                        )
+                        // Current level fill
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .fillMaxHeight(dbNormalized)
+                                .align(Alignment.BottomCenter)
+                                .background(
+                                    if (inRange) Color.Green else Color.Red,
+                                    MaterialTheme.shapes.small
+                                )
+                        )
+                        // Target low line
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(3.dp)
+                                .align(Alignment.BottomCenter)
+                                .offset(y = -(200.dp * targetLowNorm))
+                                .background(Color.White)
+                        )
+                        // Target high line
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(3.dp)
+                                .align(Alignment.BottomCenter)
+                                .offset(y = -(200.dp * targetHighNorm))
+                                .background(Color.White)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(text = "${currentDb.toInt()} dB", fontSize = 24.sp)
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // Hold timer bar
+                    val holdNormalized = (holdProgress / holdRequired).coerceIn(0f, 1f)
+                    Text(text = "Hold: ${"%.1f".format(holdProgress)}s / ${"%.1f".format(holdRequired)}s", fontSize = 16.sp)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(0.7f)
+                            .height(16.dp)
+                            .background(Color.DarkGray, MaterialTheme.shapes.small)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth(holdNormalized)
+                                .fillMaxHeight()
+                                .background(
+                                    if (inRange) Color.Cyan else Color.Gray,
+                                    MaterialTheme.shapes.small
+                                )
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(24.dp))
+
+                    // Progress
+                    Text(
+                        text = "Progress: $thresholdsHit / $totalThresholds",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(0.7f)
+                            .height(24.dp)
+                            .background(Color.DarkGray, MaterialTheme.shapes.small)
+                    ) {
+                        val progress = (thresholdsHit.toFloat() / totalThresholds).coerceIn(0f, 1f)
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth(progress)
+                                .fillMaxHeight()
+                                .background(Color.White, MaterialTheme.shapes.small)
+                        )
+                    }
+                }
             }
         }
     }

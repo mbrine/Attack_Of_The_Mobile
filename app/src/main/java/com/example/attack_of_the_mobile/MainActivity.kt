@@ -65,6 +65,7 @@ fun GameManager(modifier: Modifier = Modifier) {
         { d -> KnobMinigame(d) },
         { d -> ShakeMinigame(d) },
         { d -> VoiceMinigame(d) },
+        { d -> NoiseMinigame(d) },
     )
 
     var currentMinigame by remember { mutableStateOf<Minigame?>(null) }
