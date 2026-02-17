@@ -47,55 +47,60 @@ fun TimerBar(timeLeft: Double, maxTime: Double = 5.0) {
     )
 }
 
+// Sealed class to manage game state with associated data
+sealed class GameState {
+    data object Start : GameState()
+    data class Transition(val nextGame: Minigame) : GameState()
+    data class Playing(val game: Minigame) : GameState()
+    data object GameOver : GameState()
+}
+
 @Composable
 fun GameManager(modifier: Modifier = Modifier) {
     var score by remember { mutableIntStateOf(0) }
     var timeLeft by remember { mutableDoubleStateOf(5.0) }
     var displayedTime by remember { mutableDoubleStateOf(0.0) }
+    var gameState by remember { mutableStateOf<GameState>(GameState.Start) }
 
-    // Difficulty increases logarithmically with score
     val difficulty = ln((score + 1).toDouble() + 1.0) / ln(2.0)
 
-    val minigameFactories = listOf<(Double) -> Minigame>(
-        { d -> MathMinigame(d) },
-        { d -> MathMCQMinigame(d) },
-        { d -> TapMinigame(d) },
-        { d -> MovingTargetMinigame(d) },
-        { d -> KnobMinigame(d) },
-        { d -> ShakeMinigame(d) },
-        { d -> VoiceMinigame(d) },
-        { d -> NoiseMinigame(d) },
-    )
-
-    var currentMinigame by remember { mutableStateOf<Minigame?>(null) }
-    var nextMinigame by remember { mutableStateOf<Minigame?>(null) }
-    var gameState by remember { mutableStateOf("START") } // START, TRANSITION, PLAYING, GAME_OVER
+    val minigameFactories = remember {
+        listOf<(Double) -> Minigame>(
+            { d -> MathMinigame(d) },
+            { d -> MathMCQMinigame(d) },
+            { d -> TapMinigame(d) },
+            { d -> MovingTargetMinigame(d) },
+            { d -> KnobMinigame(d) },
+            { d -> ShakeMinigame(d) },
+            { d -> VoiceMinigame(d) },
+            { d -> NoiseMinigame(d) },
+        )
+    }
 
     val transitionDuration = 600L
 
-    // Timer logic for the PLAYING state
+    // Timer logic
     LaunchedEffect(gameState) {
-        if (gameState == "PLAYING") {
+        if (gameState is GameState.Playing) {
             displayedTime = timeLeft
             val tickRate = 20L
-            while (timeLeft > 0 && gameState == "PLAYING") {
+            while (timeLeft > 0 && gameState is GameState.Playing) {
                 delay(tickRate)
                 timeLeft -= tickRate / 1000.0
                 displayedTime = timeLeft
                 if (timeLeft <= 0) {
                     timeLeft = 0.0
                     displayedTime = 0.0
-                    gameState = "GAME_OVER"
+                    gameState = GameState.GameOver
                 }
             }
         }
     }
 
     Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        // UI overlay (Timer, Score, and Skip Button)
-        if (gameState == "PLAYING" || gameState == "TRANSITION") {
+        // UI Overlay: Timer, Score and Skip
+        if (gameState is GameState.Playing || gameState is GameState.Transition) {
             Box(modifier = Modifier.fillMaxSize()) {
-                // Timer and Score
                 Column(modifier = Modifier.align(Alignment.TopCenter)) {
                     TimerBar(timeLeft = displayedTime)
                     Text(
@@ -105,17 +110,17 @@ fun GameManager(modifier: Modifier = Modifier) {
                     )
                 }
 
-                // Skip Button
-                if (gameState == "PLAYING") {
+                if (gameState is GameState.Playing) {
                     Button(
                         onClick = {
-                            nextMinigame = minigameFactories.random()(difficulty)
-                            gameState = "TRANSITION"
+                            // Skip: pick new game, don't update score/time
+                            val next = minigameFactories.random()(difficulty)
+                            gameState = GameState.Transition(next)
                         },
                         modifier = Modifier
                             .align(Alignment.TopEnd)
                             .padding(16.dp)
-                            .padding(top = 8.dp) // Offset to be below/beside timer bar
+                            .padding(top = 8.dp)
                     ) {
                         Text("Skip")
                     }
@@ -126,14 +131,13 @@ fun GameManager(modifier: Modifier = Modifier) {
         AnimatedContent(
             targetState = gameState,
             transitionSpec = {
-                // Slide out left, Slide in right
                 (slideInHorizontally(animationSpec = tween(transitionDuration.toInt())) { it } + fadeIn())
                     .togetherWith(slideOutHorizontally(animationSpec = tween(transitionDuration.toInt())) { -it } + fadeOut())
             },
-            label = "StateTransition"
+            label = "GameStateTransition"
         ) { state ->
             when (state) {
-                "START" -> {
+                GameState.Start -> {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text("Minigame Rush", fontSize = 32.sp)
                         Spacer(modifier = Modifier.height(16.dp))
@@ -141,57 +145,61 @@ fun GameManager(modifier: Modifier = Modifier) {
                             score = 0
                             timeLeft = 5.0
                             displayedTime = 0.0
-                            nextMinigame = minigameFactories.random()(difficulty)
-                            gameState = "TRANSITION"
+                            val firstGame = minigameFactories.random()(difficulty)
+                            gameState = GameState.Transition(firstGame)
                         }) {
                             Text("Start")
                         }
                     }
                 }
-                "TRANSITION" -> {
-                    LaunchedEffect(Unit) {
+                is GameState.Transition -> {
+                    LaunchedEffect(state) {
                         val startTime = System.currentTimeMillis()
                         val startDisplayTime = displayedTime
                         while (System.currentTimeMillis() - startTime < transitionDuration) {
                             val elapsed = System.currentTimeMillis() - startTime
-                            val fraction = elapsed.toDouble() / transitionDuration
+                            val fraction = (elapsed.toDouble() / transitionDuration).coerceIn(0.0, 1.0)
                             displayedTime = startDisplayTime + (timeLeft - startDisplayTime) * fraction
                             delay(16)
                         }
                         displayedTime = timeLeft
-                        currentMinigame = nextMinigame
-                        gameState = "PLAYING"
+                        gameState = GameState.Playing(state.nextGame)
                     }
                     
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Text(
-                            text = nextMinigame?.title ?: "Get Ready!",
+                            text = state.nextGame.title,
                             style = MaterialTheme.typography.displayMedium,
                             color = MaterialTheme.colorScheme.primary
                         )
                     }
                 }
-                "PLAYING" -> {
+                is GameState.Playing -> {
                     Box(modifier = Modifier.fillMaxSize()) {
-                        key(currentMinigame) {
-                            currentMinigame?.Content(onComplete = { success ->
-                                if (success) {
-                                    val minDifficulty = 1.0
-                                    val weight = (1.0 - exp(-(difficulty - minDifficulty))).coerceIn(0.0, 1.0)
-                                    val targetTimeAtHighDifficulty = (5.0 + timeLeft) / 2.0
-                                    timeLeft = 5.0 * (1.0 - weight) + targetTimeAtHighDifficulty * weight
-                                    
-                                    score++
-                                    nextMinigame = minigameFactories.random()(difficulty)
-                                    gameState = "TRANSITION"
-                                } else {
-                                    gameState = "GAME_OVER"
+                        // The key ensures that if the same game type repeats, 
+                        // it treats it as a fresh composition.
+                        key(state.game) {
+                            state.game.Content(onComplete = { success ->
+                                // Ensure we only handle completion if we are still in this playing state
+                                if (gameState == state) {
+                                    if (success) {
+                                        val minDifficulty = 1.0
+                                        val weight = (1.0 - exp(-(difficulty - minDifficulty))).coerceIn(0.0, 1.0)
+                                        val targetTimeAtHighDifficulty = (5.0 + timeLeft) / 2.0
+                                        timeLeft = 5.0 * (1.0 - weight) + targetTimeAtHighDifficulty * weight
+                                        
+                                        score++
+                                        val next = minigameFactories.random()(difficulty)
+                                        gameState = GameState.Transition(next)
+                                    } else {
+                                        gameState = GameState.GameOver
+                                    }
                                 }
                             })
                         }
                     }
                 }
-                "GAME_OVER" -> {
+                GameState.GameOver -> {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text("Game Over", fontSize = 48.sp, color = Color.Red)
                         Spacer(modifier = Modifier.height(8.dp))
@@ -201,8 +209,8 @@ fun GameManager(modifier: Modifier = Modifier) {
                             score = 0
                             timeLeft = 5.0
                             displayedTime = 0.0
-                            nextMinigame = minigameFactories.random()(difficulty)
-                            gameState = "TRANSITION"
+                            val next = minigameFactories.random()(difficulty)
+                            gameState = GameState.Transition(next)
                         }) {
                             Text("Try Again")
                         }
