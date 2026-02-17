@@ -31,6 +31,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -186,12 +187,23 @@ class TapMinigame(difficulty: Double) : Minigame(difficulty) {
         var taps by remember { mutableIntStateOf(0) }
         val targetTaps = 10 + (difficulty * 5).toInt()
 
-        Box(modifier = Modifier.fillMaxSize().clickable(){
-            taps++
-            if (taps >= targetTaps) {
-                onComplete(true)
-            }
-        }) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .pointerInput(targetTaps) {
+                    awaitPointerEventScope {
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            if (event.type == PointerEventType.Press) {
+                                taps += event.changes.size
+                                if (taps >= targetTaps) {
+                                    onComplete(true)
+                                }
+                            }
+                        }
+                    }
+                }
+        ) {
 
             Column(
                 modifier = Modifier.fillMaxSize(),
@@ -632,6 +644,7 @@ class NoiseMinigame(difficulty: Double) : Minigame(difficulty) {
         }
 
         Box(modifier = Modifier.fillMaxSize()) {
+            @Suppress("UNUSED_EXPRESSION")
             Column(
                 modifier = Modifier.fillMaxSize(),
                 horizontalAlignment = Alignment.CenterHorizontally,
