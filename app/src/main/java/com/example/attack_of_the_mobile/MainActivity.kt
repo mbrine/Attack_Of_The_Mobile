@@ -15,9 +15,16 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.attack_of_the_mobile.ui.theme.Attack_Of_The_MobileTheme
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import kotlinx.coroutines.delay
 import kotlin.math.exp
 import kotlin.math.ln
+
+data class MinigameEntry(
+    val name: String,
+    val factory: (Double) -> Minigame
+)
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -61,20 +68,29 @@ fun GameManager(modifier: Modifier = Modifier) {
     var timeLeft by remember { mutableDoubleStateOf(5.0) }
     var displayedTime by remember { mutableDoubleStateOf(0.0) }
     var gameState by remember { mutableStateOf<GameState>(GameState.Start) }
+    var showSettings by remember { mutableStateOf(false) }
 
     val difficulty = ln((score + 1).toDouble() + 1.0) / ln(2.0)
 
-    val minigameFactories = remember {
-        listOf<(Double) -> Minigame>(
-            { d -> MathMinigame(d) },
-            { d -> MathMCQMinigame(d) },
-            { d -> TapMinigame(d) },
-            { d -> MovingTargetMinigame(d) },
-            { d -> KnobMinigame(d) },
-            { d -> ShakeMinigame(d) },
-            { d -> VoiceMinigame(d) },
-            { d -> NoiseMinigame(d) },
+    val allMinigames = remember {
+        listOf(
+            MinigameEntry("Math Challenge") { d -> MathMinigame(d) },
+            MinigameEntry("Math MCQ") { d -> MathMCQMinigame(d) },
+            MinigameEntry("Speed Tap") { d -> TapMinigame(d) },
+            MinigameEntry("Catch the Button") { d -> MovingTargetMinigame(d) },
+            MinigameEntry("Set the Dial") { d -> KnobMinigame(d) },
+            MinigameEntry("Shake It") { d -> ShakeMinigame(d) },
+            MinigameEntry("Say It") { d -> VoiceMinigame(d) },
+            MinigameEntry("Make Some Noise") { d -> NoiseMinigame(d) },
         )
+    }
+
+    val enabledMinigames = remember { mutableStateMapOf<String, Boolean>().apply {
+        allMinigames.forEach { put(it.name, true) }
+    }}
+
+    val activeFactories = remember(enabledMinigames.toMap()) {
+        allMinigames.filter { enabledMinigames[it.name] != false }.map { it.factory }
     }
 
     val transitionDuration = 600L
@@ -114,7 +130,7 @@ fun GameManager(modifier: Modifier = Modifier) {
                     Button(
                         onClick = {
                             // Skip: pick new game, don't update score/time
-                            val next = minigameFactories.random()(difficulty)
+                            val next = activeFactories.random()(difficulty)
                             gameState = GameState.Transition(next)
                         },
                         modifier = Modifier
@@ -145,10 +161,14 @@ fun GameManager(modifier: Modifier = Modifier) {
                             score = 0
                             timeLeft = 5.0
                             displayedTime = 0.0
-                            val firstGame = minigameFactories.random()(difficulty)
+                            val firstGame = activeFactories.random()(difficulty)
                             gameState = GameState.Transition(firstGame)
                         }) {
                             Text("Start")
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        OutlinedButton(onClick = { showSettings = true }) {
+                            Text("Settings")
                         }
                     }
                 }
@@ -189,7 +209,7 @@ fun GameManager(modifier: Modifier = Modifier) {
                                         timeLeft = 5.0 * (1.0 - weight) + targetTimeAtHighDifficulty * weight
                                         
                                         score++
-                                        val next = minigameFactories.random()(difficulty)
+                                        val next = activeFactories.random()(difficulty)
                                         gameState = GameState.Transition(next)
                                     } else {
                                         gameState = GameState.GameOver
@@ -209,14 +229,66 @@ fun GameManager(modifier: Modifier = Modifier) {
                             score = 0
                             timeLeft = 5.0
                             displayedTime = 0.0
-                            val next = minigameFactories.random()(difficulty)
+                            val next = activeFactories.random()(difficulty)
                             gameState = GameState.Transition(next)
                         }) {
                             Text("Try Again")
                         }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        OutlinedButton(onClick = { showSettings = true }) {
+                            Text("Settings")
+                        }
                     }
                 }
             }
+        }
+
+        if (showSettings) {
+            val disabledCount = enabledMinigames.count { !it.value }
+            val maxDisabled = 3
+
+            AlertDialog(
+                onDismissRequest = { showSettings = false },
+                title = { Text("Settings") },
+                text = {
+                    Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                        Text(
+                            "Disable up to $maxDisabled minigames ($disabledCount/$maxDisabled disabled)",
+                            fontSize = 14.sp,
+                            color = Color.Gray
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        allMinigames.forEach { entry ->
+                            val enabled = enabledMinigames[entry.name] != false
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Checkbox(
+                                    checked = enabled,
+                                    onCheckedChange = { checked ->
+                                        if (checked) {
+                                            enabledMinigames[entry.name] = true
+                                        } else if (disabledCount < maxDisabled) {
+                                            enabledMinigames[entry.name] = false
+                                        }
+                                    }
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(entry.name, fontSize = 18.sp)
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    Button(onClick = { showSettings = false }) {
+                        Text("Done")
+                    }
+                }
+            )
         }
     }
 }
