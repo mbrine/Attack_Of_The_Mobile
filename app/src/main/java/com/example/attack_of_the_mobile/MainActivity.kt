@@ -89,8 +89,22 @@ fun GameManager(modifier: Modifier = Modifier) {
         allMinigames.forEach { put(it.name, true) }
     }}
 
-    val activeFactories = remember(enabledMinigames.toMap()) {
-        allMinigames.filter { enabledMinigames[it.name] != false }.map { it.factory }
+    // Managed rotation list
+    var rotationPool by remember { mutableStateOf(emptyList<MinigameEntry>()) }
+
+    fun getNextMinigame(): Minigame {
+        val activeEntries = allMinigames.filter { enabledMinigames[it.name] != false }
+        
+        // If pool is empty or only contains disabled games, refill and shuffle
+        if (rotationPool.isEmpty() || rotationPool.all { enabledMinigames[it.name] == false }) {
+            rotationPool = activeEntries.shuffled()
+        }
+        
+        // Find first entry in pool that is still enabled
+        val entry = rotationPool.first { enabledMinigames[it.name] != false }
+        rotationPool = rotationPool.filter { it != entry }
+        
+        return entry.factory(difficulty)
     }
 
     val transitionDuration = 600L
@@ -129,8 +143,7 @@ fun GameManager(modifier: Modifier = Modifier) {
                 if (gameState is GameState.Playing) {
                     Button(
                         onClick = {
-                            // Skip: pick new game, don't update score/time
-                            val next = activeFactories.random()(difficulty)
+                            val next = getNextMinigame()
                             gameState = GameState.Transition(next)
                         },
                         modifier = Modifier
@@ -161,7 +174,8 @@ fun GameManager(modifier: Modifier = Modifier) {
                             score = 0
                             timeLeft = 5.0
                             displayedTime = 0.0
-                            val firstGame = activeFactories.random()(difficulty)
+                            rotationPool = emptyList() // Reset pool on new game
+                            val firstGame = getNextMinigame()
                             gameState = GameState.Transition(firstGame)
                         }) {
                             Text("Start")
@@ -196,11 +210,8 @@ fun GameManager(modifier: Modifier = Modifier) {
                 }
                 is GameState.Playing -> {
                     Box(modifier = Modifier.fillMaxSize()) {
-                        // The key ensures that if the same game type repeats, 
-                        // it treats it as a fresh composition.
                         key(state.game) {
                             state.game.Content(onComplete = { success ->
-                                // Ensure we only handle completion if we are still in this playing state
                                 if (gameState == state) {
                                     if (success) {
                                         val minDifficulty = 1.0
@@ -209,7 +220,7 @@ fun GameManager(modifier: Modifier = Modifier) {
                                         timeLeft = 5.0 * (1.0 - weight) + targetTimeAtHighDifficulty * weight
                                         
                                         score++
-                                        val next = activeFactories.random()(difficulty)
+                                        val next = getNextMinigame()
                                         gameState = GameState.Transition(next)
                                     } else {
                                         gameState = GameState.GameOver
@@ -229,7 +240,8 @@ fun GameManager(modifier: Modifier = Modifier) {
                             score = 0
                             timeLeft = 5.0
                             displayedTime = 0.0
-                            val next = activeFactories.random()(difficulty)
+                            rotationPool = emptyList() // Reset pool on retry
+                            val next = getNextMinigame()
                             gameState = GameState.Transition(next)
                         }) {
                             Text("Try Again")

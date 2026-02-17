@@ -20,6 +20,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardOptions
@@ -51,15 +52,34 @@ abstract class Minigame(val difficulty: Double) {
     abstract fun Content(onComplete: (Boolean) -> Unit)
 }
 
+/*
+Title: Solve the Math!
+
+Written by: Matthew Chan
+
+Summary: Type the correct math answer. The game automatically completes if the correct answer is present.
+Difficulty effects: Range of numbers increases.
+*/
 class MathMinigame(difficulty: Double) : Minigame(difficulty) {
-    override val title: String = "Math Challenge"
+    override val title: String = "Solve the Math!"
 
     @Composable
     override fun Content(onComplete: (Boolean) -> Unit) {
-        val num1 by remember { mutableIntStateOf(Random.nextInt(0, 11 + (difficulty * 2).toInt())) }
-        val num2 by remember { mutableIntStateOf(Random.nextInt(0, 11 + (difficulty * 2).toInt())) }
-        var userAnswer by remember { mutableStateOf("") }
-        val correctAnswer = num1 + num2
+        var num1 by remember { mutableIntStateOf(Random.nextInt(0, 11 + (difficulty * 2).toInt())) }
+        var num2 by remember { mutableIntStateOf(Random.nextInt(0, 11 + (difficulty * 2).toInt())) }
+        var userAnswer by remember { mutableStateOf("")}
+        val isAddition by remember { mutableStateOf(Random.nextBoolean()) }
+        if(!isAddition)
+        {
+            if(num2>num1)
+            {
+                val tmp = num1
+                num1 = num2
+                num2 = tmp
+            }
+        }
+        val correctAnswer = if(isAddition) num1 + num2 else num1 - num2
+        val operator = if(isAddition) "+" else "-"
 
         Box(modifier = Modifier.fillMaxSize()) {
             Column(
@@ -69,7 +89,7 @@ class MathMinigame(difficulty: Double) : Minigame(difficulty) {
             ) {
                 Text(text = title, fontSize = 24.sp)
                 Spacer(modifier = Modifier.height(32.dp))
-                Text(text = "$num1 + $num2 = ?", fontSize = 48.sp)
+                Text(text = "$num1 $operator $num2 = ?", fontSize = 48.sp)
                 Spacer(modifier = Modifier.height(16.dp))
                 TextField(
                     value = userAnswer,
@@ -88,8 +108,16 @@ class MathMinigame(difficulty: Double) : Minigame(difficulty) {
     }
 }
 
+/*
+Title: MCQ Math!
+
+Written by: Matthew Chan
+
+Summary: Tap the correct math answer. Wrong answer will end the game.
+Difficulty effects: Range of numbers increases, and 4-option questions are more likely to appear.
+*/
 class MathMCQMinigame(difficulty: Double) : Minigame(difficulty) {
-    override val title: String = "Math MCQ"
+    override val title: String = "MCQ Math!"
 
     @Composable
     override fun Content(onComplete: (Boolean) -> Unit) {
@@ -97,12 +125,15 @@ class MathMCQMinigame(difficulty: Double) : Minigame(difficulty) {
         val num1 by remember { mutableIntStateOf(Random.nextInt(0, range)) }
         val num2 by remember { mutableIntStateOf(Random.nextInt(0, range)) }
         val correctAnswer = num1 + num2
-        
+
+        val numAnswers = if (Random.nextFloat() * difficulty>difficulty*0.65) 4 else 3
+
+
         val options by remember {
             mutableStateOf(
                 buildSet {
                     add(correctAnswer)
-                    while (size < 3) {
+                    while (size < numAnswers) {
                         val offset = Random.nextInt(-5, 6)
                         if (offset != 0) {
                             val decoy = correctAnswer + offset
@@ -138,6 +169,15 @@ class MathMCQMinigame(difficulty: Double) : Minigame(difficulty) {
     }
 }
 
+/*
+Title: Speed Tap!
+
+Written by: Matthew Chan
+
+Summary: Tap the screen for the required number of times.
+Difficulty effects: Required taps increases.
+*/
+
 class TapMinigame(difficulty: Double) : Minigame(difficulty) {
     override val title: String = "Speed Tap!"
 
@@ -146,7 +186,13 @@ class TapMinigame(difficulty: Double) : Minigame(difficulty) {
         var taps by remember { mutableIntStateOf(0) }
         val targetTaps = 10 + (difficulty * 5).toInt()
 
-        Box(modifier = Modifier.fillMaxSize()) {
+        Box(modifier = Modifier.fillMaxSize().clickable(){
+            taps++
+            if (taps >= targetTaps) {
+                onComplete(true)
+            }
+        }) {
+
             Column(
                 modifier = Modifier.fillMaxSize(),
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -156,28 +202,26 @@ class TapMinigame(difficulty: Double) : Minigame(difficulty) {
                 Spacer(modifier = Modifier.height(32.dp))
                 Text(text = "Taps: $taps / $targetTaps", fontSize = 32.sp)
                 Spacer(modifier = Modifier.height(16.dp))
-                Button(
-                    onClick = {
-                        taps++
-                        if (taps >= targetTaps) {
-                            onComplete(true)
-                        }
-                    },
-                    modifier = Modifier.size(150.dp)
-                ) {
-                    Text("TAP!", fontSize = 24.sp)
-                }
+                Text("TAP ANYWHERE!", fontSize = 24.sp)
             }
         }
     }
 }
 
+/*
+Title: Catch the Button!
+
+Written by: Matthew Chan
+
+Summary: Tap the moving button.
+Difficulty effects: Button speed increases.
+*/
 class MovingTargetMinigame(difficulty: Double) : Minigame(difficulty) {
     override val title: String = "Catch the Button!"
 
     @Composable
     override fun Content(onComplete: (Boolean) -> Unit) {
-        val buttonSize = 100.dp
+        val buttonSize = 150.dp
 
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
             val scoop = this
@@ -241,8 +285,16 @@ class MovingTargetMinigame(difficulty: Double) : Minigame(difficulty) {
     }
 }
 
+/*
+Title: Set the Dial!
+
+Written by: Matthew Chan
+
+Summary: Rotate the dial to the correct angle range and click the Set button.
+Difficulty effects: Angle tolerance decreases, down to 2 degrees.
+*/
 class KnobMinigame(difficulty: Double) : Minigame(difficulty) {
-    override val title: String = "Set the Dial"
+    override val title: String = "Set the Dial!"
 
     @Composable
     override fun Content(onComplete: (Boolean) -> Unit) {
@@ -258,7 +310,7 @@ class KnobMinigame(difficulty: Double) : Minigame(difficulty) {
             ) {
                 Text(text = title, fontSize = 24.sp)
                 Spacer(modifier = Modifier.height(16.dp))
-                Text(text = "Target: ${targetAngle.toInt()}°", fontSize = 32.sp)
+                Text(text = "Target: ${(targetAngle - tolerance).toInt()} - ${(targetAngle + tolerance).toInt()}°", fontSize = 32.sp)
                 Text(text = "Current: ${currentAngle.floatValue.toInt()}°", fontSize = 24.sp)
                 Spacer(modifier = Modifier.height(32.dp))
 
@@ -294,16 +346,6 @@ class KnobMinigame(difficulty: Double) : Minigame(difficulty) {
                             useCenter = true
                         )
 
-                        // Target line
-                        rotate(targetAngle) {
-                            drawLine(
-                                color = Color.Red,
-                                start = center,
-                                end = Offset(center.x + radius, center.y),
-                                strokeWidth = 3.dp.toPx()
-                            )
-                        }
-
                         // Knob body
                         rotate(currentAngle.floatValue) {
                             drawCircle(
@@ -334,6 +376,14 @@ class KnobMinigame(difficulty: Double) : Minigame(difficulty) {
     }
 }
 
+/*
+Title: Shake It!
+
+Written by: Ryan Chan
+
+Summary: Shake the phone.
+Difficulty effects: Number of required shakes increases, shake strength threshold increases.
+*/
 class ShakeMinigame(difficulty: Double) : Minigame(difficulty) {
     override val title: String = "Shake It!"
 
@@ -341,7 +391,7 @@ class ShakeMinigame(difficulty: Double) : Minigame(difficulty) {
     override fun Content(onComplete: (Boolean) -> Unit) {
         val context = LocalContext.current
         var shakeCount by remember { mutableIntStateOf(0) }
-        val targetShakes = 3 + (difficulty * 1).toInt()
+        val targetShakes = 35 + (difficulty * 5).toInt()
         var shakePower by remember { mutableFloatStateOf(0f) }
 
         // Shake detection threshold
@@ -479,6 +529,14 @@ class ShakeMinigame(difficulty: Double) : Minigame(difficulty) {
     }
 }
 
+/*
+Title: Make Some Noise!
+
+Written by: Bryan Chua
+
+Summary: Make noise within a volume range, a certain number of times.
+Difficulty effects: Volume must be maintained for longer.
+*/
 class NoiseMinigame(difficulty: Double) : Minigame(difficulty) {
     override val title: String = "Make Some Noise!"
 
@@ -488,7 +546,7 @@ class NoiseMinigame(difficulty: Double) : Minigame(difficulty) {
         val context = LocalContext.current
         var currentDb by remember { mutableFloatStateOf(0f) }
         var thresholdsHit by remember { mutableIntStateOf(0) }
-        val totalThresholds = 1 + difficulty.toInt()
+        val totalThresholds = 3
         val rangeSize = 20
         val ranges by remember {
             mutableStateOf(List(totalThresholds) {
@@ -496,10 +554,10 @@ class NoiseMinigame(difficulty: Double) : Minigame(difficulty) {
                 low.toFloat() to (low + rangeSize).toFloat()
             })
         }
-        // Hold duration per threshold: budget 4s total, minus cooldowns (0.3s each gap)
+
         val cooldown = 300L
-        val holdRequired = ((4.0 - (totalThresholds - 1) * cooldown / 1000.0) / totalThresholds)
-            .coerceIn(0.3, 0.7).toFloat()
+        val holdRequired = ((2.0 + difficulty - (totalThresholds - 1) * cooldown / 1000.0) / totalThresholds)
+            .coerceIn(0.1, 0.7).toFloat()
         var holdProgress by remember { mutableFloatStateOf(0f) }
         var hasPermission by remember {
             mutableStateOf(
@@ -703,6 +761,14 @@ class NoiseMinigame(difficulty: Double) : Minigame(difficulty) {
     }
 }
 
+/*
+Title: Say It!
+
+Written by: Matthew Chan
+
+Summary: Say the word on screen.
+Difficulty effects: None.
+*/
 class VoiceMinigame(difficulty: Double) : Minigame(difficulty) {
     override val title: String = "Say it!"
     
