@@ -869,3 +869,120 @@ class VoiceMinigame(difficulty: Double) : Minigame(difficulty) {
         }
     }
 }
+
+/*
+Title: Steer!
+
+Written by: Matthew Chan
+
+Summary: Rotate the phone like a steering wheel to match a target angle.
+Difficulty effects: Tolerance decreases, target angle range increases.
+*/
+class SteerMinigame(difficulty: Double) : Minigame(difficulty) {
+    override val title: String = "Steer!"
+
+    @Composable
+    override fun Content(onComplete: (Boolean) -> Unit) {
+        val context = LocalContext.current
+        var currentRotation by remember { mutableFloatStateOf(0f) }
+        
+        // Random target angle between -90 and 90 degrees
+        val targetAngle by remember { 
+            val range = (45 + difficulty * 10).coerceAtMost(120.0).toInt()
+            mutableFloatStateOf(Random.nextInt(-range, range + 1).toFloat()) 
+        }
+        
+        // Difficulty scaling
+        val tolerance = (15f - (difficulty * 2f).toFloat()).coerceAtLeast(3f)
+        
+        DisposableEffect(Unit) {
+            val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
+            val rotationSensor = sensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
+
+            val listener = object : SensorEventListener {
+                override fun onSensorChanged(event: SensorEvent) {
+                    if (event.sensor.type == Sensor.TYPE_ROTATION_VECTOR) {
+                        val rotationMatrix = FloatArray(9)
+                        SensorManager.getRotationMatrixFromVector(rotationMatrix, event.values)
+                        val orientation = FloatArray(3)
+                        SensorManager.getOrientation(rotationMatrix, orientation)
+
+                        currentRotation = (orientation[2] * 180 / PI).toFloat()
+                    }
+                }
+                override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+            }
+
+            sensorManager.registerListener(listener, rotationSensor, SensorManager.SENSOR_DELAY_GAME)
+            onDispose { sensorManager.unregisterListener(listener) }
+        }
+
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(text = title, fontSize = 24.sp)
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(text = "Turn the wheel!", fontSize = 18.sp)
+                
+                Spacer(modifier = Modifier.height(32.dp))
+
+                Box(
+                    modifier = Modifier.size(240.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Canvas(modifier = Modifier.fillMaxSize()) {
+                        val radius = size.minDimension / 2
+                        val centerX = size.width / 2
+                        val centerY = size.height / 2
+                        
+                        // Outer ri
+                        drawCircle(
+                            color = Color.DarkGray,
+                            radius = radius,
+                            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 20.dp.toPx())
+                        )
+
+                        // Target range arc
+                        drawArc(
+                            color = Color.Green.copy(alpha = 0.3f),
+                            startAngle = -90f + targetAngle - tolerance,
+                            sweepAngle = tolerance * 2,
+                            useCenter = true
+                        )
+
+                        // The "Wheel" indicator (spokes)
+                        rotate(currentRotation, pivot = center) {
+                            // Top indicator
+                            drawLine(
+                                color = Color.Red,
+                                start = Offset(centerX, centerY - radius + 10.dp.toPx()),
+                                end = Offset(centerX, centerY - radius + 40.dp.toPx()),
+                                strokeWidth = 8.dp.toPx()
+                            )
+                            
+                            // Spoke
+                            drawLine(
+                                color = Color.Gray,
+                                start = center,
+                                end = Offset(centerX, centerY - radius + 20.dp.toPx()),
+                                strokeWidth = 10.dp.toPx()
+                            )
+                        }
+                    }
+                }
+                
+                Spacer(modifier = Modifier.height(32.dp))
+                
+                val inRange = abs(currentRotation - targetAngle) < tolerance
+                
+                Button(
+                    onClick = { if (inRange) onComplete(true) },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (inRange) Color.Green else MaterialTheme.colorScheme.primary
+                    )
+                ) {
+                    Text("Done!", fontSize = 24.sp)
+                }
+            }
+        }
+    }
+}

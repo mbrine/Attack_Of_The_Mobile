@@ -82,6 +82,7 @@ fun GameManager(modifier: Modifier = Modifier) {
             MinigameEntry("Shake It") { d -> ShakeMinigame(d) },
             MinigameEntry("Say It") { d -> VoiceMinigame(d) },
             MinigameEntry("Make Some Noise") { d -> NoiseMinigame(d) },
+            MinigameEntry("Steer!") { d -> SteerMinigame(d) },
         )
     }
 
